@@ -1,0 +1,144 @@
+# 「SmartOn PC」プロジェクト 仕様書
+
+## 1. 概要
+本プロジェクトは、Ubuntu PCにGeneric ESP32-C3を統合し、スマートホーム規格「**Matter**」に対応させることで、PCの電源状態を他の家電と同様にシームレスに管理・操作できるようにするものである。
+
+## 2. 実現する機能
+*   **リモート操作**: Google Nest Hubやスマートフォンから、音声やアプリを通じてPCの電源をONにする。
+*   **死活監視**: PingによりPCが稼働中か確認する。フリーズ検知にも利用する。
+*   **フリーズ回復**: Ping無応答時に電源ボタン長押しで強制リセットする。
+*   **自動化**: 設定した時間に自動起動し、Musicサーバーなどのバッチ処理を実行する。スケジュール起動はESP32-C3のRTCまたはMatterオートメーション機能を利用して実現する。
+*   **省エネ**: 消し忘れを防止し、不要な待機電力を削減する。
+
+## 3. システム構成
+### 3.1 構成ハードウェア
+*   **ホストPC**: OSはUbuntuを搭載。
+*   **制御マイコン**: **Generic ESP32-C3**（Matter over Wi-Fi対応）。
+*   **コントローラー**: Google Nest Hub、Androidスマートフォン。
+*   **スイッチング回路**: シングルチャンネルリレーモジュール（PC側とマイコン側を電気的に分離）。
+
+> **ボード選定理由**: ESP32GeeK（C6）はLCD搭載によりLCDコールバックがMatter処理と競合し、レスポンスが低下する。Generic ESP32-C3はLCDを持たないため、Matterコールバックを専有でき処理が高速化する。また開発者スキルおよび汎用性を考慮しリレーモジュールを採用。
+
+### 3.2 ネットワーク・プロトコル
+*   **プロトコル**: **Matter**。
+*   **通信方式**: Wi-Fi 4（802.11 b/g/n）。
+*   **注**: Wi-Fi 6およびZigbee/Thread（ESP32-C6固有機能）は対象外。
+
+## 4. ハードウェア設計詳細
+### 4.1 給電方式
+*   **電源源**: 外部USBポート（ACアダプタ等）からの常時給電。
+*   **理由**: PCがシャットダウン状態でも、Matterコントローラーからの起動命令を待機し続けるため。
+
+### 4.2 インターフェース接続
+ESP32-C3とPCマザーボードの間には、**シングルチャンネルリレーモジュール**を介在させる。
+
+| 接続先 | ESP32-C3 側役割 | PC マザーボード側 | 備考 |
+| :--- | :--- | :--- | :--- |
+| **出力系** | GPIO (OUT) | PWR SW ピン | リレーモジュール経由で短絡制御 |
+
+> **注**: PWR LED ピンからの入力系は採用しない。電源ON/OFFの状態検知はPingで代替する（LED読み取りではフリーズを検知できないため）。WoLも信頼性の問題により採用しない。
+
+### 4.3 待機電力（推測値）
+PCがOFF状態でのシステム全体の待機電力。
+
+| 機器 | 状態 | 推測消費電力 |
+| :--- | :--- | :--- |
+| Generic ESP32-C3 | Wi-Fi 常時接続・待機 | 約 0.3〜0.5W |
+| リレーモジュール | 非作動時（コイル OFF） | 約 0.01W 以下 |
+| USB アダプタ損失 | 変換効率 80% 想定 | +10〜20% |
+| **合計** | | **約 0.4〜0.6W** |
+
+> **注**: 上記は推測値。正確な値は実測による確認を推奨。スマートフォン充電器の待機電力（0.1〜0.3W）と同程度であり、実用上は無視できるレベル。
+
+### 4.4 物理配置
+*   **設置場所**: PCケースの外部に設置。
+*   **メリット**: Wi-Fi電波強度の確保およびメンテナンス性の向上。
+
+> **注**: 必須条件ではなく、推奨。
+
+## 5. ソフトウェア仕様
+### 5.1 開発環境
+*   **ファームウェアSDK**: ESP-IDF（Espressif公式SDK）＋ ConnectedHomeIP（Matter SDK）を使用する。
+*   **コミッショニング**: Matter標準のQRコードおよびセットアップPINコードによりコントローラーへ登録する。開発・テスト段階では`chip-cert`ツールで生成したテスト用DAC（Device Attestation Certificate）を使用し、量産移行時に正式な製造者証明書に差し替える。
+
+### 5.2 ESP32-C3 制御ロジック
+*   **Matterデバイスタイプ**: **On/Off Plug-in Unit**として定義する（PCの電源制御に意味的に適合し、Google HomeのUIでも適切なアイコンで表示される）。
+
+*   **PCの状態検知**:
+    *   Pingに応答あり → **ON**（稼働中）
+    *   Pingに応答なし かつ 起動命令を送っていない → **OFF または フリーズ**
+    *   ホスト名指定でPingする（IPアドレス固定 または mDNS `hostname.local` で対応）。
+
+*   **ON命令受信時**:
+    1. 電源SW用のGPIOを約200ms〜500ms「L」に落とし、リレーを作動させる（短押しシミュレート）。
+    2. 一定時間後にPingで起動を確認する（確認失敗は許容、通知なし）。
+
+*   **フリーズ検知・回復**:
+    1. 定期的にPingを送信し、応答を監視する。
+    2. 一定回数連続して無応答の場合、フリーズと判断する。
+    3. 電源SW用のGPIOを約4〜5秒「L」に落とし、強制電源断（長押しシミュレート）する。
+    4. Google Homeへ通知する（任意）。
+
+*   **OFF命令受信時**:
+    *   シャットダウンはSSH等のソフトウェア手段で実施する。リレーによる電源ボタン操作はメインフローに含めない。
+
+### 5.3 Ubuntu OS側設定
+*   **ACPI設定**: 電源ボタンが押された際、即座にシャットダウンプロセスが開始されるよう設定（`/etc/systemd/logind.conf` の `HandlePowerKey=poweroff`）。
+*   **Musicサーバー**: OS起動時に自動実行されるよう構成。
+
+## 6. 安全および例外処理
+*   **電気的保護**: リレーモジュールによりESP32-C3とPCマザーボードを電気的に分離する。
+*   **ネットワーク遮断時**: Wi-Fiが切断された場合でも、物理的な電源ボタンによる手動操作は維持される。スマートホーム機能自体が動作しないため、Ping監視の失敗は許容する。
+*   **死活監視**: ESP32-C3からPCへ定期的にPingを送信し、無応答時はフリーズと判断して回復処理を行う。
+
+## 7. 制限事項
+
+・　本プロジェクトは自宅の一般的な家庭用ルーター環境を前提にしている。
+・　認証サーバーで厳重に管理されているネットワークや、セキュリティ管理が十分にされていないネットワークでは、実現困難と推測します。
+
+
+使用しているソフトウェアスタック
+レイヤー	名称	バージョン	出所
+OS / SDK	ESP-IDF	5.4.1	Espressif 公式
+Matter ラッパー	esp-matter	環境変数 ESP_MATTER_PATH で指定	Espressif GitHub
+Matter 本体	ConnectedHomeIP (CHIP)	esp-matter のサブモジュール	CSA（Connectivity Standards Alliance）公式
+コンポーネント	mdns, json_parser 等	各バージョン固定	components.espressif.com
+
+構造のポイント
+CMakeLists.txt:11 にこう書かれています：
+
+
+set(MATTER_SDK_PATH ${ESP_MATTER_PATH}/connectedhomeip/connectedhomeip)
+つまり esp-matter リポジトリの中に connectedhomeip がサブモジュールとして内包されており、階層は：
+
+
+esp-matter（Espressif製ラッパー）
+  └── connectedhomeip（Matter本体 / CSA製）
+        └── config/esp32/  ← ESP32向け設定
+という構造です。
+
+自分でコードを変更しているのは main/ 以下のアプリ層のみで、SDK・Matterスタック自体は公式をそのまま利用しています。
+
+ライセンス一覧
+メインスタック
+ソフトウェア	ライセンス
+ESP-IDF (v5.4.1)	Apache License 2.0
+esp-matter	Apache License 2.0
+ConnectedHomeIP / CHIP (Matter本体)	Apache License 2.0
+コンポーネント（managed_components）
+コンポーネント	ライセンス
+esp-serial-flasher	Apache 2.0
+esp_delta_ota	Apache 2.0
+esp_diag_data_store	Apache 2.0
+esp_diagnostics	Apache 2.0
+esp_encrypted_img	Apache 2.0
+esp_insights	Apache 2.0
+esp_rcp_update	Apache 2.0
+esp_secure_cert_mgr	Apache 2.0
+json_generator	Apache 2.0
+json_parser	Apache 2.0
+mdns	Apache 2.0
+rmaker_common	Apache 2.0
+cbor	MIT
+jsmn	MIT
+

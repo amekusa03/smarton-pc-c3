@@ -1,0 +1,52 @@
+# Build artifacts
+build/
+sdkconfig
+sdkconfig.json
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+*.egg
+
+# Environment files
+.env
+.env.local
+wifi_creds.h
+
+# Compiler outputs
+*.o
+*.a
+*.so
+*.elf
+*.bin
+*.map
+
+# Editor backups
+*.bak
+.project
+.cproject
+.settings/
+
+# CMake
+CMakeUserPresets.json
+cmake_install.cmake
+CMakeLists.txt.user
+
+# ESP-IDF specific
+config.env
+sdkconfig.defaults.esp32*
+!sdkconfig.defaults
+
+# Debug files
+*.gdbinit
