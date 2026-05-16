@@ -1,7 +1,10 @@
 cmake_minimum_required(VERSION 3.5)
 
+# 必要に応じて、環境変数が未定義の場合のデフォルトパスをセットする例
 if(NOT DEFINED ENV{ESP_MATTER_PATH})
-    message(FATAL_ERROR "Please set ESP_MATTER_PATH to the path of esp-matter repo")
+    # 暫定的にパスを指定する場合（自身のパスに書き換えてください）
+    set(ENV{ESP_MATTER_PATH} "$ENV{HOME}/esp/esp-matter")
+    message(STATUS "Setting ESP_MATTER_PATH to default: $ENV{ESP_MATTER_PATH}")
 endif()
 
 set(PROJECT_VER "1.0")

@@ -62,6 +62,11 @@ static void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
                 char ip[20];
                 snprintf(ip, sizeof(ip), IPSTR, IP2STR(&info.ip));
                 ESP_LOGI(TAG, "IP: %s", ip);
+                static bool s_monitor_started = false;
+                if (!s_monitor_started) {
+                    s_monitor_started = true;
+                    pc_monitor_init(PC_HOSTNAME);
+                }
             }
         }
         break;
@@ -144,6 +149,5 @@ extern "C" void app_main()
 
     PrintOnboardingCodes(chip::RendezvousInformationFlags(chip::RendezvousInformationFlag::kOnNetwork));
 
-    pc_monitor_init(PC_HOSTNAME);
     xTaskCreate(factory_reset_task, "factory_reset", 4096, nullptr, 1, nullptr);
 }
