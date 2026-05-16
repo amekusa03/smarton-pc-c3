@@ -42,6 +42,9 @@ pc_power_state_t pc_get_power_state(void);
 // 再送パケットが複数回呼び出しても1回だけ実行される。
 esp_err_t pc_execute_command(bool want_on);
 
+// フリーズ検知時に呼ぶ。電源ボタン長押し（強制電源断）をシミュレートする。
+esp_err_t pc_execute_force_shutdown(void);
+
 #ifdef __cplusplus
 }
 #endif

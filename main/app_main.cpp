@@ -8,8 +8,8 @@
 
 #include <esp_matter.h>
 #include "pc_control.h"
+#include "pc_monitor.h"
 #include "wifi_creds.h"
-#include "lcd_display.hpp"
 
 #include <app/server/Server.h>
 #include <setup_payload/OnboardingCodesUtil.h>
@@ -21,10 +21,8 @@ using namespace esp_matter::attribute;
 using namespace esp_matter::endpoint;
 using namespace chip::app::Clusters;
 
-#define GPIO_FACTORY_RESET  GPIO_NUM_9
+#define GPIO_FACTORY_RESET    GPIO_NUM_9
 #define FACTORY_RESET_HOLD_MS 3000
-
-static bool s_commissioned = false;
 
 static void factory_reset_task(void *)
 {
@@ -46,7 +44,6 @@ static void factory_reset_task(void *)
             }
             if (held >= FACTORY_RESET_HOLD_MS) {
                 ESP_LOGI(TAG, "Factory reset triggered");
-                lcd_notify_wifi_connecting();
                 esp_matter::factory_reset();
             }
         }
@@ -58,7 +55,6 @@ static void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
 {
     switch (event->Type) {
     case chip::DeviceLayer::DeviceEventType::kInterfaceIpAddressChanged: {
-        // IPv4アドレスをLCDに渡す
         esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
         if (netif) {
             esp_netif_ip_info_t info;
@@ -66,29 +62,15 @@ static void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
                 char ip[20];
                 snprintf(ip, sizeof(ip), IPSTR, IP2STR(&info.ip));
                 ESP_LOGI(TAG, "IP: %s", ip);
-                if (!s_commissioned) {
-                    lcd_notify_wifi_connected(ip);
-                } else {
-                    lcd_notify_wifi_connected(ip);
-                }
             }
         }
         break;
     }
     case chip::DeviceLayer::DeviceEventType::kCommissioningComplete:
         ESP_LOGI(TAG, "Commissioning complete");
-        s_commissioned = true;
-        // PCの現在の電源状態に合わせてLCDを更新
-        if (pc_get_power_state() == PC_STATE_ON) {
-            lcd_notify_pc_on();
-        } else {
-            lcd_notify_pc_off();
-        }
         break;
     case chip::DeviceLayer::DeviceEventType::kFabricRemoved:
         ESP_LOGI(TAG, "Fabric removed");
-        s_commissioned = false;
-        lcd_notify_commissioning();
         break;
     default:
         break;
@@ -111,12 +93,10 @@ static esp_err_t app_attribute_update_cb(attribute::callback_type_t type, uint16
     if (cluster_id != OnOff::Id || attribute_id != OnOff::Attributes::OnOff::Id) {
         return ESP_OK;
     }
-    esp_err_t err = pc_execute_command(val->val.b);
-    if (err == ESP_OK) {
-        if (val->val.b) lcd_notify_pc_on();
-        else            lcd_notify_pc_off();
-    }
-    return err;
+    // pc_execute_command は s_pressing フラグで再入を防ぐ。
+    // Matter再送が複数回呼んでも1回しかボタンを押さない。
+    pc_monitor_set_state(val->val.b ? PC_MONITOR_BOOTING : PC_MONITOR_SHUTTING_DOWN);
+    return pc_execute_command(val->val.b);
 }
 
 static void store_wifi_credentials(void)
@@ -137,8 +117,6 @@ extern "C" void app_main()
 {
     nvs_flash_init();
     pc_control_init();
-    lcd_init();
-    lcd_notify_wifi_connecting();
     store_wifi_credentials();
 
     node::config_t node_config;
@@ -166,5 +144,6 @@ extern "C" void app_main()
 
     PrintOnboardingCodes(chip::RendezvousInformationFlags(chip::RendezvousInformationFlag::kOnNetwork));
 
+    pc_monitor_init(PC_HOSTNAME);
     xTaskCreate(factory_reset_task, "factory_reset", 4096, nullptr, 1, nullptr);
 }
