@@ -22,9 +22,7 @@ extern "C" {
 //   GPIO LOW (0V) : 電流 0mA              → LED消灯 → PWR_SW開放
 // -----------------------------------------------------------------------
 #define GPIO_PWR_SW   20  // OUTPUT: フォトカプラ経由でPWR SWピンを短絡
-#define GPIO_PWR_LED  4   // INPUT:  フォトカプラ経由でPWR LEDピンを読む
-                          // 注意: GPIO 4 はLCDのRSTピンと共有。
-                          //       pc_get_power_state()の読み値は不正確になる場合がある。
+//#define GPIO_PWR_LED  4 // 未使用: 電源状態検知はPing監視に切り替えたため不要
 
 // 0=実機モード, 1=ループバックテストモード
 #define PC_LOOPBACK_TEST 0

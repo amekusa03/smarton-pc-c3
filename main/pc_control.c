@@ -74,14 +74,14 @@ void pc_control_init(void)
     gpio_config(&out_cfg);
     gpio_set_level(GPIO_PWR_SW, LEVEL_IDLE);
 
-    gpio_config_t in_cfg = {
-        .pin_bit_mask = (1ULL << GPIO_PWR_LED),
-        .mode         = GPIO_MODE_INPUT,
-        .pull_up_en   = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type    = GPIO_INTR_DISABLE,
-    };
-    gpio_config(&in_cfg);
+    // gpio_config_t in_cfg = {
+    //     .pin_bit_mask = (1ULL << GPIO_PWR_LED),
+    //     .mode         = GPIO_MODE_INPUT,
+    //     .pull_up_en   = GPIO_PULLUP_ENABLE,
+    //     .pull_down_en = GPIO_PULLDOWN_DISABLE,
+    //     .intr_type    = GPIO_INTR_DISABLE,
+    // };
+    // gpio_config(&in_cfg);
 
     esp_timer_create_args_t rel_args = {
         .callback = release_cb,
@@ -99,17 +99,17 @@ void pc_control_init(void)
     ESP_LOGI(TAG, "GPIO initialized: PWR_SW=%d (expected %d)", gpio_get_level(GPIO_PWR_SW), LEVEL_IDLE);
 }
 
-pc_power_state_t pc_get_power_state(void)
-{
-    int first = gpio_get_level(GPIO_PWR_LED);
-    vTaskDelay(DEBOUNCE_MS / portTICK_PERIOD_MS);
-    int second = gpio_get_level(GPIO_PWR_LED);
-
-    if (first != second) {
-        return PC_STATE_TRANSITIONING;
-    }
-    return (second == 0) ? PC_STATE_ON : PC_STATE_OFF;
-}
+// pc_power_state_t pc_get_power_state(void)  // 未使用: 電源状態検知はPing監視に切り替えたため不要
+// {
+//     int first = gpio_get_level(GPIO_PWR_LED);
+//     vTaskDelay(DEBOUNCE_MS / portTICK_PERIOD_MS);
+//     int second = gpio_get_level(GPIO_PWR_LED);
+//
+//     if (first != second) {
+//         return PC_STATE_TRANSITIONING;
+//     }
+//     return (second == 0) ? PC_STATE_ON : PC_STATE_OFF;
+// }
 
 esp_err_t pc_execute_command(bool want_on)
 {

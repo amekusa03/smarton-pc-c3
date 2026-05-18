@@ -47,6 +47,7 @@ CMakeLists.txt.user
 config.env
 sdkconfig.defaults.esp32*
 !sdkconfig.defaults
+managed_components/
 
 # Debug files
 *.gdbinit
